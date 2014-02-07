@@ -93,8 +93,8 @@ options you can configure.
   not reached, the data source will attempt to backfill the suggestions from 
   `remote`.
 
-* `dupDetector` – If set, this is expected to be a function with the signature 
-  `(remoteMatch, match)` that returns `true` if the datums are duplicates or
+* `dupDetector` – If set, this is expected to be a function with the signature
+  `(remoteMatch, localMatch)` that returns `true` if the datums are duplicates or
   `false` otherwise. If not set, duplicate detection will not be performed.
 
 * `sorter` – A [compare function] used to sort matched datums for a given query.
