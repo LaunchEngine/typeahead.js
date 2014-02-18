@@ -74,10 +74,9 @@ var Bloodhound = window.Bloodhound = (function() {
       return deferred;
 
       function handlePrefetchResponse(resp) {
-        var filtered;
-
-        filtered = o.filter ? o.filter(resp) : resp;
-        that.add(filtered);
+        // reset to mirror the behavior of bootstrapping
+        that.reset();
+        that.add(o.filter ? o.filter(resp) : resp);
 
         that._saveToStorage(that.index.serialize(), o.thumbprint, o.ttl);
       }
@@ -96,9 +95,7 @@ var Bloodhound = window.Bloodhound = (function() {
       return this.transport.get(url, this.remote.ajax, handleRemoteResponse);
 
       function handleRemoteResponse(resp) {
-        var filtered = that.remote.filter ? that.remote.filter(resp) : resp;
-
-        cb(filtered);
+        cb(that.remote.filter ? that.remote.filter(resp) : resp);
       }
     },
 
@@ -127,25 +124,29 @@ var Bloodhound = window.Bloodhound = (function() {
       return stored.data && !isExpired ? stored.data : null;
     },
 
-    // ### public
-
-    // the contents of this function are broken out of the constructor
-    // to help improve the testability of bloodhounds
-    initialize: function initialize() {
-      var that = this, deferred;
+    _initialize: function initialize() {
+      var that = this, local = this.local, deferred;
 
       deferred = this.prefetch ?
         this._loadPrefetch(this.prefetch) : $.Deferred().resolve();
 
       // make sure local is added to the index after prefetch
-      this.local && deferred.done(addLocalToIndex);
+      local && deferred.done(addLocalToIndex);
 
       this.transport = this.remote ? new Transport(this.remote) : null;
-      this.initialize = function initialize() { return deferred.promise(); };
 
-      return deferred.promise();
+      return (this.initPromise = deferred.promise());
 
-      function addLocalToIndex() { that.add(that.local); }
+      function addLocalToIndex() {
+        // local can be a function that returns an array of datums
+        that.add(_.isFunction(local) ? local() : local);
+      }
+    },
+
+    // ### public
+
+    initialize: function initialize(force) {
+      !this.initPromise || force ? this._initialize() : this.initPromise;
     },
 
     add: function add(data) {
@@ -187,6 +188,14 @@ var Bloodhound = window.Bloodhound = (function() {
 
         cb && cb(matchesWithBackfill.sort(that.sorter));
       }
+    },
+
+    reset: function reset() {
+      this.index.reset();
+    },
+
+    clearPrefetchCache: function clearPrefetchCache() {
+      this.storage && this.storage.clear();
     },
 
     ttAdapter: function ttAdapter() { return _.bind(this.get, this); }
