@@ -340,8 +340,7 @@
             }
             this.datumTokenizer = o.datumTokenizer;
             this.queryTokenizer = o.queryTokenizer;
-            this.datums = [];
-            this.trie = newNode();
+            this.reset();
         }
         _.mixin(SearchIndex.prototype, {
             bootstrap: function bootstrap(o) {
@@ -390,6 +389,10 @@
                 return matches ? _.map(unique(matches), function(id) {
                     return that.datums[id];
                 }) : [];
+            },
+            reset: function reset() {
+                this.datums = [];
+                this.trie = newNode();
             },
             serialize: function serialize() {
                 return {
@@ -469,7 +472,7 @@
                 } : prefetch;
                 prefetch = _.mixin(defaults, prefetch);
                 prefetch.thumbprint = VERSION + prefetch.thumbprint;
-                prefetch.ajax.method = prefetch.ajax.method || "get";
+                prefetch.ajax.type = prefetch.ajax.type || "GET";
                 prefetch.ajax.dataType = prefetch.ajax.dataType || "json";
                 !prefetch.url && $.error("prefetch requires url to be set");
             }
@@ -493,7 +496,7 @@
                 } : remote;
                 remote = _.mixin(defaults, remote);
                 remote.rateLimiter = /^throttle$/i.test(remote.rateLimitBy) ? byThrottle(remote.rateLimitWait) : byDebounce(remote.rateLimitWait);
-                remote.ajax.method = remote.ajax.method || "get";
+                remote.ajax.type = remote.ajax.type || "GET";
                 remote.ajax.dataType = remote.ajax.dataType || "json";
                 delete remote.rateLimitBy;
                 delete remote.rateLimitWait;
@@ -524,7 +527,7 @@
                 $.error("one of local, prefetch, or remote is required");
             }
             this.limit = o.limit || 5;
-            this.sorter = o.sorter || noSort;
+            this.sorter = getSorter(o.sorter);
             this.dupDetector = o.dupDetector || ignoreDuplicates;
             this.local = oParser.local(o);
             this.prefetch = oParser.prefetch(o);
@@ -555,9 +558,8 @@
                 }
                 return deferred;
                 function handlePrefetchResponse(resp) {
-                    var filtered;
-                    filtered = o.filter ? o.filter(resp) : resp;
-                    that.add(filtered);
+                    that.reset();
+                    that.add(o.filter ? o.filter(resp) : resp);
                     that._saveToStorage(that.index.serialize(), o.thumbprint, o.ttl);
                 }
             },
@@ -568,8 +570,7 @@
                 url = this.remote.replace ? this.remote.replace(this.remote.url, query) : this.remote.url.replace(this.remote.wildcard, uriEncodedQuery);
                 return this.transport.get(url, this.remote.ajax, handleRemoteResponse);
                 function handleRemoteResponse(resp) {
-                    var filtered = that.remote.filter ? that.remote.filter(resp) : resp;
-                    cb(filtered);
+                    cb(that.remote.filter ? that.remote.filter(resp) : resp);
                 }
             },
             _saveToStorage: function saveToStorage(data, thumbprint, ttl) {
@@ -580,7 +581,7 @@
                 }
             },
             _readFromStorage: function readFromStorage(thumbprint) {
-                var stored = {};
+                var stored = {}, isExpired;
                 if (this.storage) {
                     stored.data = this.storage.get(keys.data);
                     stored.protocol = this.storage.get(keys.protocol);
@@ -589,25 +590,26 @@
                 isExpired = stored.thumbprint !== thumbprint || stored.protocol !== location.protocol;
                 return stored.data && !isExpired ? stored.data : null;
             },
-            initialize: function initialize() {
-                var that = this, deferred;
+            _initialize: function initialize() {
+                var that = this, local = this.local, deferred;
                 deferred = this.prefetch ? this._loadPrefetch(this.prefetch) : $.Deferred().resolve();
-                this.local && deferred.done(addLocalToIndex);
+                local && deferred.done(addLocalToIndex);
                 this.transport = this.remote ? new Transport(this.remote) : null;
-                this.initialize = function initialize() {
-                    return deferred.promise();
-                };
-                return deferred.promise();
+                return this.initPromise = deferred.promise();
                 function addLocalToIndex() {
-                    that.add(that.local);
+                    that.add(_.isFunction(local) ? local() : local);
                 }
+            },
+            initialize: function initialize(force) {
+                !this.initPromise || force ? this._initialize() : this.initPromise;
             },
             add: function add(data) {
                 this.index.add(data);
             },
             get: function get(query, cb) {
                 var that = this, matches, cacheHit = false;
-                matches = this.index.get(query).sort(this.sorter).slice(0, this.limit);
+                matches = this.index.get(query);
+                matches = this.sorter(matches).slice(0, this.limit);
                 if (matches.length < this.limit && this.transport) {
                     cacheHit = this._getFromRemote(query, returnRemoteMatches);
                 }
@@ -625,13 +627,25 @@
                     cb && cb(matchesWithBackfill.sort(that.sorter));
                 }
             },
+            reset: function reset() {
+                this.index.reset();
+            },
+            clearPrefetchCache: function clearPrefetchCache() {
+                this.storage && this.storage.clear();
+            },
             ttAdapter: function ttAdapter() {
                 return _.bind(this.get, this);
             }
         });
         return Bloodhound;
-        function noSort() {
-            return 0;
+        function getSorter(sortFn) {
+            return _.isFunction(sortFn) ? sort : noSort;
+            function sort(array) {
+                return array.sort(sortFn);
+            }
+            function noSort(array) {
+                return array;
+            }
         }
         function ignoreDuplicates() {
             return false;

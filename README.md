@@ -1,3 +1,10 @@
+# LaunchEngine typeahead.js
+
+This is a fork of [twitter/typeahead.js](https://github.com/twitter/typeahead.js) with the following changes:
+
+- Wrapper HTML uses \<div>s rather than \<span>s ([this issue](https://github.com/twitter/typeahead.js/issues/660) discusses alternatives)
+- Adds a `reset()` method to Bloodhount using [this PR](https://github.com/jharding/typeahead.js/commit/e664f047becedbec4b3422c362f2415751a3dd85)
+
 [![build status](https://secure.travis-ci.org/twitter/typeahead.js.png?branch=master)](http://travis-ci.org/twitter/typeahead.js)
 [![Built with Grunt](https://cdn.gruntjs.com/builtwith.png)](http://gruntjs.com/)
 
